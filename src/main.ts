@@ -20,6 +20,8 @@ import { CommodityCatalog } from './domain/market-data/commodity/index.js'
 import { createEquityTools } from './tool/equity.js'
 import { getSDKExecutor, buildRouteMap, SDKEquityClient, SDKCryptoClient, SDKCurrencyClient, SDKEtfClient, SDKIndexClient, SDKDerivativesClient, SDKCommodityClient, SDKEconomyClient } from './domain/market-data/client/typebb/index.js'
 import type { EquityClientLike, CryptoClientLike, CurrencyClientLike, EtfClientLike, IndexClientLike, DerivativesClientLike, CommodityClientLike, EconomyClientLike } from './domain/market-data/client/types.js'
+import { createTaiwanTools } from './tool/taiwan.js'
+import { TwseClient, FinMindClient } from './domain/market-data/taiwan/index.js'
 import { buildSDKCredentials } from './domain/market-data/credential-map.js'
 import { OpenBBEquityClient } from './domain/market-data/client/openbb-api/equity-client.js'
 import { OpenBBCryptoClient } from './domain/market-data/client/openbb-api/crypto-client.js'
@@ -239,6 +241,10 @@ async function main() {
   toolCenter.register(createCronTools(cronEngine), 'cron')
   toolCenter.register(createMarketSearchTools(marketSearch), 'market-search')
   toolCenter.register(createEquityTools(equityClient), 'equity')
+  toolCenter.register(
+    createTaiwanTools(new TwseClient(), new FinMindClient(process.env.FINMIND_TOKEN)),
+    'taiwan',
+  )
   if (config.news.enabled) {
     toolCenter.register(createNewsArchiveTools(newsStore), 'news')
   }

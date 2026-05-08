@@ -202,6 +202,9 @@ export async function askAgentSdk(
         disallowedTools: finalDisallowed,
         mcpServers,
         systemPrompt,
+        // Load .claude/skills/ + .claude/settings.json from project + user.
+        // Without this the SDK runs in isolation mode and ignores filesystem skills.
+        settingSources: ['project', 'user'],
         permissionMode: 'bypassPermissions',
         allowDangerouslySkipPermissions: true,
         persistSession: false,
