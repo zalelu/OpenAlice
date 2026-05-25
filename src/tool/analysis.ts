@@ -11,6 +11,7 @@ import { z } from 'zod'
 import type { EquityClientLike, CryptoClientLike, CurrencyClientLike, CommodityClientLike } from '@/domain/market-data/client/types'
 import { IndicatorCalculator } from '@/domain/analysis/indicator/calculator'
 import type { IndicatorContext, OhlcvData, HistoricalDataResult, DataSourceMeta } from '@/domain/analysis/indicator/types'
+import { pearson, alignByDate, describeCorrelation, type DatePoint } from '@/domain/analysis/correlation.js'
 
 /** 根据 interval 决定拉取的日历天数（约 1 倍冗余） */
 function getCalendarDays(interval: string): number {
@@ -125,6 +126,51 @@ Use marketSearchForResearch to find the correct symbol first.`,
         const context = buildContext(asset, equityClient, cryptoClient, currencyClient, commodityClient)
         const calculator = new IndicatorCalculator(context)
         return await calculator.calculate(formula, precision)
+      },
+    }),
+
+    calculateCorrelation: tool({
+      description: `Compute Pearson correlation between two date-aligned series.
+
+Pass two arrays of {date, value} objects. The tool aligns them on common
+dates (so monthly + daily series can be compared, sampling daily down to
+month-ends), then runs Pearson r.
+
+Use this for cross-asset/macro work — e.g. "is 2330 stock price negatively
+correlated with US 10Y yield?". Get series A from taiwanGetHistory, series B
+from economyFredSeries, then feed both here.
+
+Returns:
+  - r          : correlation coefficient in [-1, 1]
+  - n          : aligned sample count
+  - label      : qualitative band (strong-positive / moderate-* / weak / insufficient)
+  - dates      : list of common dates (debug aid)
+
+⚠️ Caveats:
+  - r captures linear association only — non-linear relations show r ≈ 0
+  - Spurious correlation is rampant in finance; always check r in context
+  - n < 10 returns label="insufficient" — don't rely on the number`,
+      inputSchema: z.object({
+        seriesA: z.array(z.object({ date: z.string(), value: z.number() }))
+          .describe('First series, e.g. stock close prices: [{date:"2025-01-02", value:580}, ...]'),
+        seriesB: z.array(z.object({ date: z.string(), value: z.number() }))
+          .describe('Second series, same format. Must use comparable date keys (YYYY-MM-DD prefix).'),
+      }),
+      execute: ({ seriesA, seriesB }) => {
+        try {
+          const aligned = alignByDate(seriesA as DatePoint[], seriesB as DatePoint[])
+          const r = pearson(aligned.xs, aligned.ys)
+          const result = describeCorrelation(r, aligned.dates.length)
+          return {
+            ...result,
+            dates: aligned.dates,
+            note: aligned.dates.length === 0
+              ? 'No common dates — series did not overlap on the date grid'
+              : undefined,
+          }
+        } catch (err) {
+          return { error: (err as Error).message }
+        }
       },
     }),
   }

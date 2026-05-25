@@ -99,5 +99,42 @@ Key fundamental data point for Taiwan stocks — YoY growth is heavily watched.`
         }
       },
     }),
+
+    taiwanGetMacro: tool({
+      description: `Fetch macro / cross-asset data series from FinMind.
+
+Available indicators (free tier):
+  - "InterestRate"           : 各國基準利率 — REQUIRES dataId (e.g. "FED", "ECB", "BOJ", "PBoC")
+                               sparse data (only on rate-change events)
+  - "GovernmentBondsYield"   : 各國公債殖利率 — REQUIRES dataId (series code)
+                               台灣 10Y 通常需付費版，美國 10Y 改用 FRED "DGS10"
+  - "CrudeOilPrices"         : WTI / Brent 原油 (no dataId needed)
+  - "GoldPrice"              : 黃金現貨 (no dataId needed)
+  - "CnnFearGreedIndex"      : CNN 恐懼貪婪指數 (no dataId needed)
+
+⚠️ Taiwan CPI / GDP / 失業率 / 央行外匯存底 are NOT available via FinMind free tier.
+   For Taiwan-specific macro NOT in this list, use FRED (economyFredSearch + economyFredSeries) —
+   FRED has limited Taiwan coverage. For USD/TWD or other FX, use currencyGetHistorical with
+   yfinance symbol (e.g. "USDTWD=X").`,
+      inputSchema: z.object({
+        indicator: z.enum([
+          'InterestRate',
+          'GovernmentBondsYield',
+          'CrudeOilPrices',
+          'GoldPrice',
+          'CnnFearGreedIndex',
+        ]).describe('Macro indicator dataset name'),
+        startDate: z.string().describe('Start date YYYY-MM-DD'),
+        endDate: z.string().optional().describe('End date YYYY-MM-DD (default: latest)'),
+        dataId: z.string().optional().describe('Required for InterestRate (e.g. "FED") and GovernmentBondsYield. Omit for others.'),
+      }),
+      execute: async ({ indicator, startDate, endDate, dataId }) => {
+        try {
+          return await finmind.getMacro(indicator, startDate, endDate, dataId)
+        } catch (err) {
+          return { error: (err as Error).message }
+        }
+      },
+    }),
   }
 }

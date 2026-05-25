@@ -13,6 +13,7 @@ import { forceCompact } from '../../core/compaction'
 import { readAIProviderConfig, setActiveProfile, readConnectorsConfig } from '../../core/config'
 import type { ConnectorCenter } from '../../core/connector-center.js'
 import { TelegramConnector, splitMessage, MAX_MESSAGE_LENGTH } from './telegram-connector.js'
+import { markdownToTelegramHtml, splitMarkdownForTelegram, MAX_MARKDOWN_CHUNK } from './markdown.js'
 import type { UTAManager } from '../../domain/trading/index.js'
 import type { Operation } from '../../domain/trading/git/types.js'
 import { getOperationSymbol } from '../../domain/trading/git/types.js'
@@ -453,18 +454,43 @@ export class TelegramPlugin implements Plugin {
       }
     }
 
-    // Send text — edit placeholder for first chunk, send the rest as new messages
+    // Send text — edit placeholder for first chunk (HTML), send the rest as new HTML messages.
     if (text) {
-      const chunks = splitMessage(text, MAX_MESSAGE_LENGTH)
+      const mdChunks = splitMarkdownForTelegram(text, MAX_MARKDOWN_CHUNK)
       let startIdx = 0
 
-      if (placeholderMsgId && chunks.length > 0) {
-        const edited = await this.bot!.api.editMessageText(chatId, placeholderMsgId, chunks[0]).then(() => true).catch(() => false)
-        if (edited) startIdx = 1
+      if (placeholderMsgId && mdChunks.length > 0) {
+        const html = markdownToTelegramHtml(mdChunks[0])
+        const edited = await this.bot!.api
+          .editMessageText(chatId, placeholderMsgId, html, { parse_mode: 'HTML' })
+          .then(() => true)
+          .catch((err) => {
+            console.error('telegram: placeholder edit (HTML) failed, will retry as plain:', err)
+            return false
+          })
+        if (edited) {
+          startIdx = 1
+        } else {
+          // HTML edit failed — fall back to plain text on the placeholder
+          await this.bot!.api
+            .editMessageText(chatId, placeholderMsgId, mdChunks[0].slice(0, MAX_MESSAGE_LENGTH))
+            .then(() => {
+              startIdx = 1
+            })
+            .catch(() => {})
+        }
       }
 
-      for (let i = startIdx; i < chunks.length; i++) {
-        await this.bot!.api.sendMessage(chatId, chunks[i])
+      for (let i = startIdx; i < mdChunks.length; i++) {
+        const html = markdownToTelegramHtml(mdChunks[i])
+        await this.bot!.api
+          .sendMessage(chatId, html, { parse_mode: 'HTML' })
+          .catch(async (err) => {
+            console.error('telegram: HTML send failed, retrying as plain text:', err)
+            await this.bot!.api
+              .sendMessage(chatId, mdChunks[i].slice(0, MAX_MESSAGE_LENGTH))
+              .catch((e) => console.error('telegram: plain-text fallback also failed:', e))
+          })
       }
 
       // Placeholder was edited — done

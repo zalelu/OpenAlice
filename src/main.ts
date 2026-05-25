@@ -22,6 +22,7 @@ import { getSDKExecutor, buildRouteMap, SDKEquityClient, SDKCryptoClient, SDKCur
 import type { EquityClientLike, CryptoClientLike, CurrencyClientLike, EtfClientLike, IndexClientLike, DerivativesClientLike, CommodityClientLike, EconomyClientLike } from './domain/market-data/client/types.js'
 import { createTaiwanTools } from './tool/taiwan.js'
 import { TwseClient, FinMindClient } from './domain/market-data/taiwan/index.js'
+import { createCurrencyTools } from './tool/currency.js'
 import { buildSDKCredentials } from './domain/market-data/credential-map.js'
 import { OpenBBEquityClient } from './domain/market-data/client/openbb-api/equity-client.js'
 import { OpenBBCryptoClient } from './domain/market-data/client/openbb-api/crypto-client.js'
@@ -51,6 +52,7 @@ import { createMetricsListener } from './task/metrics/index.js'
 import { createTaskRouter } from './task/task-router/index.js'
 import { NewsCollectorStore, NewsCollector } from './domain/news/index.js'
 import { createNewsArchiveTools } from './tool/news.js'
+import { loadSkillsManifest, renderSkillsBlock } from './core/skills-manifest.js'
 
 // ==================== Persistence paths ====================
 
@@ -152,16 +154,17 @@ async function main() {
   const getInstructions = async () => {
     const persona = await readFile(PERSONA_FILE, 'utf-8').catch(() => '')
     const { content, updatedAt } = brain.getFrontalLobeMeta()
-    if (!content) return persona
-    const age = updatedAt ? formatRelativeAge(updatedAt) : 'at some point'
-    return [
-      persona,
-      '---',
-      '## Notes you wrote to yourself',
-      `_(written ${age})_`,
-      '',
-      content,
-    ].join('\n')
+    // Inject available skills so the AI knows which workflows it has —
+    // a custom systemPrompt replaces the SDK's default prompt where
+    // skills would normally be listed.
+    const skillsBlock = renderSkillsBlock(await loadSkillsManifest())
+    const sections: string[] = [persona]
+    if (content) {
+      const age = updatedAt ? formatRelativeAge(updatedAt) : 'at some point'
+      sections.push('---', '## Notes you wrote to yourself', `_(written ${age})_`, '', content)
+    }
+    if (skillsBlock) sections.push('---', skillsBlock)
+    return sections.join('\n')
   }
 
   // ==================== Cron ====================
@@ -245,6 +248,7 @@ async function main() {
     createTaiwanTools(new TwseClient(), new FinMindClient(process.env.FINMIND_TOKEN)),
     'taiwan',
   )
+  toolCenter.register(createCurrencyTools(currencyClient), 'currency')
   if (config.news.enabled) {
     toolCenter.register(createNewsArchiveTools(newsStore), 'news')
   }
