@@ -46,6 +46,8 @@ import { createMetricsListener } from './task/metrics/index.js'
 import { createTaskRouter } from './task/task-router/index.js'
 import { NewsCollectorStore, NewsCollector } from './domain/news/index.js'
 import { createNewsArchiveTools } from './tool/news.js'
+import { createFinMindClient } from './domain/market-data/client/finmind/index.js'
+import { createTaiwanTools } from './tool/taiwan.js'
 
 // ==================== Persistence paths ====================
 
@@ -234,6 +236,9 @@ async function main() {
     toolCenter.register(createNewsArchiveTools(newsStore), 'news')
   }
   toolCenter.register(createAnalysisTools(equityClient, cryptoClient, currencyClient, commodityClient), 'analysis')
+
+  const finmind = createFinMindClient()
+  toolCenter.register(createTaiwanTools(finmind), 'taiwan')
 
   console.log(`tool-center: ${toolCenter.list().length} tools registered`)
 

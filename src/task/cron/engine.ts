@@ -12,7 +12,7 @@
  * Jobs are stored as a single JSON file on disk (atomic write).
  */
 
-import { readFile, writeFile, rename, mkdir } from 'node:fs/promises'
+import { readFile, writeFile, rename, unlink, mkdir } from 'node:fs/promises'
 import { dirname } from 'node:path'
 import { randomUUID } from 'node:crypto'
 import type { ListenerRegistry } from '../../core/listener-registry.js'
@@ -125,7 +125,17 @@ export function createCronEngine(opts: CronEngineOpts): CronEngine {
     // called concurrently (e.g. onTick save vs UI-triggered add/update).
     const tmp = `${storePath}.${process.pid}.${randomUUID().slice(0, 8)}.tmp`
     await writeFile(tmp, JSON.stringify({ jobs }, null, 2), 'utf-8')
-    await rename(tmp, storePath)
+    try {
+      await rename(tmp, storePath)
+    } catch (err) {
+      // Windows: rename over an existing file fails with EPERM — remove target first
+      if (err instanceof Error && (err as NodeJS.ErrnoException).code === 'EPERM') {
+        await unlink(storePath).catch(() => {})
+        await rename(tmp, storePath)
+      } else {
+        throw err
+      }
+    }
   }
 
   // ---------- timer ----------
